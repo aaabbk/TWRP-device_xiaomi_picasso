@@ -39,8 +39,10 @@ PRODUCT_PACKAGES += \
     fastbootd
 
 # OEM otacert
-PRODUCT_EXTRA_RECOVERY_KEYS += \
-    vendor/recovery/security/miui
+# vendor/recovery/security/miui 是橙狐专属路径，TWRP 树里不存在（TWRP 用 vendor/twrp），
+# 已由 vendor/twrp/config/common.mk 设置 lineage 密钥，这里不再追加，避免签名阶段找不到密钥。
+# PRODUCT_EXTRA_RECOVERY_KEYS += \
+#     vendor/recovery/security/miui
 
 # Stock flashable zips
 PRODUCT_DEFAULT_PROPERTY_OVERRIDES += \
