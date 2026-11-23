@@ -44,12 +44,6 @@ if [ "$1" = "$FDEVICE" -o "$FOX_BUILD_DEVICE" = "$FDEVICE" ]; then
     export OF_MAINTAINER=masemoel
     export FOX_MAINTAINER_PATCH_VERSION=3
     export FOX_BUILD_TYPE="Stable"
-    export OF_SCREEN_H=2460
-    export OF_STATUS_H=122
-    export OF_STATUS_INDENT_LEFT=35
-    export OF_STATUS_INDENT_RIGHT=235
-    export OF_HIDE_NOTCH=1
-    export OF_ALLOW_DISABLE_NAVBAR=0
     export OF_PATCH_AVB20=1
     export FOX_REPLACE_BOOTIMAGE_DATE=1
     export OF_CHECK_OVERWRITE_ATTEMPTS=1

@@ -1,17 +1,16 @@
-![OFRP](https://image.ibb.co/cTMWux/logo.jpg "OFRP")
+# TWRP for Redmi K30 5G (picasso)
 
-OrangeFox Recovery Project (OFRP) R11.3 for Redmi K30 5G (picasso)
-======================================
+TWRP 12.1（同时兼容橙狐 12.1 分支）设备树。
 
 # How to build
-Download OFRP's source and picasso's repos. Your local manifest should be something like:
+Download TWRP's source and picasso's repo. Your local manifest should be something like:
 
 ```bash
 <?xml version="1.0" encoding="UTF-8"?>
 <manifest>
 
 <!-- Device tree -->
-  <project name="masemoel/device_xiaomi_picasso_recovery" path="device/xiaomi/picasso" remote="github" revision="fox_12.1"/>
+  <project name="aaabbk/TWRP-device_xiaomi_picasso" path="device/xiaomi/picasso" remote="github" revision="twrp-12.1"/>
 </manifest>
 ```
 
@@ -21,6 +20,8 @@ Then go to the source folder and run:
 . build/envsetup.sh
 lunch twrp_picasso-eng && mka recoveryimage
 ```
+
+也可以用仓库自带的工作流云编译（`.github/workflows/Build TWRP picasso.yml`），推送或手动触发即可，产物为 `recovery.img`。
 
 # Device specifications
 
