@@ -17,7 +17,7 @@ on:
       DEVICE_TREE_URL:
         description: 'DEVICE_TREE_URL'
         required: true
-        default: 'https://github.com/aaabbk/device_xiaomi_picasso_recovery'
+        default: 'https://github.com/aaabbk/TWRP-device_xiaomi_picasso'
       DEVICE_TREE_BRANCH:
         description: 'DEVICE_TREE_BRANCH'
         required: true
@@ -41,7 +41,7 @@ jobs:
     env:
       MANIFEST_URL: ${{ github.event.inputs.MANIFEST_URL || 'https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp' }}
       MANIFEST_BRANCH: ${{ github.event.inputs.MANIFEST_BRANCH || 'twrp-12.1' }}
-      DEVICE_TREE_URL: ${{ github.event.inputs.DEVICE_TREE_URL || 'https://github.com/aaabbk/device_xiaomi_picasso_recovery' }}
+      DEVICE_TREE_URL: ${{ github.event.inputs.DEVICE_TREE_URL || 'https://github.com/aaabbk/TWRP-device_xiaomi_picasso' }}
       DEVICE_TREE_BRANCH: ${{ github.event.inputs.DEVICE_TREE_BRANCH || 'twrp-12.1' }}
       DEVICE_PATH: ${{ github.event.inputs.DEVICE_PATH || 'device/xiaomi/picasso' }}
       DEVICE_NAME: ${{ github.event.inputs.DEVICE_NAME || 'picasso' }}
