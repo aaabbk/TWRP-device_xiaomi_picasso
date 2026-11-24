@@ -119,3 +119,81 @@
      unsigned int options_format_version = 1;
      {
          EncryptionOptions options;
+--- a/Decrypt.cpp
++++ b/Decrypt.cpp
+@@ -320,6 +320,57 @@
+ 	return true;
+ }
+ 
++// Android 14+ stores the synthetic password state files under a per-protector random id
++// ("<protector id>.spblob/.pwd/.secdis") instead of the single legacy keystore "sp-handle".
++// Older ROMs keep using the legacy handle.  Resolve which id this user's state files use:
++// prefer the legacy handle when its files exist, otherwise scan the spblob directory.
++static std::string Resolve_Spblob_Id(const std::string& spblob_path,
++                                     const std::string& legacy_handle) {
++    printf("twrp_spblob: spblob_path=%s legacy_handle='%s'\n", spblob_path.c_str(),
++           legacy_handle.c_str());
++
++    if (!legacy_handle.empty() &&
++        android::vold::pathExists(spblob_path + legacy_handle + ".spblob")) {
++        printf("twrp_spblob: using legacy handle %s\n", legacy_handle.c_str());
++        return legacy_handle;
++    }
++
++    std::map<std::string, bool> has_pwd;
++    std::map<std::string, bool> has_spblob;
++    DIR* dir = opendir(spblob_path.c_str());
++    if (dir == NULL) {
++        printf("twrp_spblob: cannot open %s: %s\n", spblob_path.c_str(), strerror(errno));
++        return legacy_handle;
++    }
++    struct dirent* entry;
++    while ((entry = readdir(dir)) != NULL) {
++        std::string name = entry->d_name;
++        if (name == "." || name == "..") continue;
++        printf("twrp_spblob: entry %s\n", name.c_str());
++        if (name.size() > 4 && name.compare(name.size() - 4, 4, ".pwd") == 0) {
++            has_pwd[name.substr(0, name.size() - 4)] = true;
++        } else if (name.size() > 7 && name.compare(name.size() - 7, 7, ".spblob") == 0) {
++            has_spblob[name.substr(0, name.size() - 7)] = true;
++        }
++    }
++    closedir(dir);
++
++    // An LSKF based protector has both .pwd and .spblob; prefer it over other protectors.
++    for (auto& item : has_pwd) {
++        if (has_spblob.count(item.first)) {
++            printf("twrp_spblob: using protector id %s (has .pwd and .spblob)\n",
++                   item.first.c_str());
++            return item.first;
++        }
++    }
++    for (auto& item : has_spblob) {
++        printf("twrp_spblob: using protector id %s (only .spblob)\n", item.first.c_str());
++        return item.first;
++    }
++    printf("twrp_spblob: no usable state file found, falling back to legacy handle\n");
++    return legacy_handle;
++}
++
+ /* C++ replacement for
+  * https://android.googlesource.com/platform/frameworks/base/+/android-8.0.0_r23/services/core/java/com/android/server/locksettings/SyntheticPasswordManager.java#765
+  * called here
+@@ -658,7 +709,7 @@
+ 	long handle = 0;
+ 	// Get the handle: https://android.googlesource.com/platform/frameworks/base/+/android-8.0.0_r23/services/core/java/com/android/server/locksettings/LockSettingsService.java#2017
+ 	KeystoreInfo keystore_info;
+-	std::string handle_str = keystore_info.getHandle(user_id);
++	std::string handle_str = Resolve_Spblob_Id(spblob_path, keystore_info.getHandle(user_id));
+ 	// Now we begin driving unwrapPasswordBasedSyntheticPassword from: https://android.googlesource.com/platform/frameworks/base/+/android-8.0.0_r23/services/core/java/com/android/server/locksettings/SyntheticPasswordManager.java#758
+ 	// First we read the password data which contains scrypt parameters
+ 	// printf("pwd N %i R %i P %i salt ", pwd.scryptN, pwd.scryptR, pwd.scryptP); output_hex((char*)pwd.salt, pwd.salt_len); printf("\n");
+@@ -834,7 +885,7 @@
+ 	if (stat(spblob_path_char, &st) == 0) {
+ 		std::string spblob_path = spblob_path_char;
+ 		KeystoreInfo keystore_info;
+-		std::string handle_str = keystore_info.getHandle(user_id);
++		std::string handle_str = Resolve_Spblob_Id(spblob_path, keystore_info.getHandle(user_id));
+ 		printf("Handle is '%s'\n", handle_str.c_str());
+ 		password_data_struct pwd;
+ 		if (!Get_Password_Data(spblob_path, handle_str, &pwd)) {

@@ -22,7 +22,14 @@ fscrypt 的 policy 版本在**格式化那一刻**固定，之后刷机、升级
    - v1 用 8 字节 descriptor、v2 由内核计算 identifier
 3. `FsCrypt.cpp`
    - `get_data_file_encryption_options()` 解析完 fstab 后，用探测到的版本覆盖 `options.version`
-4. `MetadataCrypt.cpp`
+4. `Decrypt.cpp`
+   - 新增 `Resolve_Spblob_Id()`：Android 14+ 把合成密码状态文件改成按随机
+     **protector id** 命名（`<id>.spblob/.pwd/.secdis`），不再用 `locksettings.db` 里的
+     `sp-handle`。这里先试老 handle，不行就扫 `spblob/` 目录，优先选同时有
+     `.pwd` 和 `.spblob` 的（LSKF 保护器）
+   - `Get_Password_Type()` 与 `Decrypt_User_Synth_Pass()` 都改用解析出的 id，
+     keystore 别名同源，避免 v1 ROM 与 A14+ ROM 的命名差异
+5. `MetadataCrypt.cpp`
    - `keydirectory` 不存在时（没有 metadata 加密的数据）直接挂载 /data 并返回成功，
      让 FBE 层继续走普通解密流程，避免官方包被 metadata 分支卡住
 
@@ -49,6 +56,10 @@ twrp_policy_detect: /data/system_de -> version 2
 twrp_policy_detect: /data/misc -> version 0
 twrp_install_key: mountpoint=/data fstab_version=1 wrapped=1
 twrp_install_key: detected policy v2, overriding fstab v1
+twrp_spblob: spblob_path=/data/system_de/0/spblob/ legacy_handle='a595d274077350b'
+twrp_spblob: entry 0.handle
+twrp_spblob: entry <protector id>.pwd
+twrp_spblob: using protector id <protector id> (has .pwd and .spblob)
 ```
 
 若只看到 `twrp_policy_detect` 全为 0，说明探测拿不到策略（DE 还没挂载或内核不支持该 ioctl）；
