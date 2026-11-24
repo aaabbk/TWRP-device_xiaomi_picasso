@@ -1,0 +1,91 @@
+diff --git a/PolicyDetect.h b/PolicyDetect.h
+new file mode 100644
+index 0000000..10fff17
+--- /dev/null
++++ b/PolicyDetect.h
+@@ -0,0 +1,85 @@
++/*
++ * Copyright (C) 2025 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#ifndef ANDROID_VOLD_POLICY_DETECT_H
++#define ANDROID_VOLD_POLICY_DETECT_H
++
++#include <errno.h>
++#include <fcntl.h>
++#include <string.h>
++#include <sys/ioctl.h>
++#include <unistd.h>
++
++#include <linux/fscrypt.h>
++
++#include <android-base/logging.h>
++
++// Layout of the legacy (v1) fscrypt policy as returned by FS_IOC_GET_ENCRYPTION_POLICY.
++// Defined locally so that this code builds against both old and new kernel headers.
++struct fscrypt_policy_v1_compat {
++    uint8_t version;
++    uint8_t contents_encryption_mode;
++    uint8_t filenames_encryption_mode;
++    uint8_t flags;
++    uint8_t master_key_descriptor[8];
++};
++
++// Returns 1 if path is protected by a v1 policy, 2 if it is protected by a v2 policy,
++// 0 if it is not encrypted (or cannot be queried).
++//
++// The legacy ioctl only accepts a v1 sized struct: the kernel fills it in and returns 0
++// for a v1 policy, and fails with EINVAL when the on-disk policy is v2.
++static inline int DetectPolicyVersionAt(const char* path) {
++    if (path == nullptr || *path == '\0') return 0;
++
++    int fd = open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
++    if (fd < 0) return 0;
++
++    fscrypt_policy_v1_compat policy;
++    memset(&policy, 0, sizeof(policy));
++
++    int result = 0;
++    if (ioctl(fd, FS_IOC_GET_ENCRYPTION_POLICY, &policy) == 0) {
++        result = 1;  // v1 policy
++    } else if (errno == EINVAL) {
++        result = 2;  // v2 policy: kernel rejected the v1 struct
++    }
++    close(fd);
++    return result;
++}
++
++// Probes the data partition for the fscrypt policy version actually in use.
++// The preference order matters: /data/system_de always exists on FBE devices and is DE
++// encrypted, so it can be queried before the user unlocks anything.
++static inline int DetectDataPolicyVersion() {
++    static const char* kCandidates[] = {
++            "/data/system_de",
++            "/data/misc",
++            "/data/media",
++            "/data/system_ce",
++    };
++
++    for (size_t i = 0; i < sizeof(kCandidates) / sizeof(kCandidates[0]); i++) {
++        int version = DetectPolicyVersionAt(kCandidates[i]);
++        if (version != 0) {
++            LOG(INFO) << "Detected fscrypt policy v" << version << " on " << kCandidates[i];
++            return version;
++        }
++    }
++    return 0;
++}
++
++#endif  // ANDROID_VOLD_POLICY_DETECT_H

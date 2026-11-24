@@ -1,0 +1,116 @@
+--- a/FsCrypt.cpp
++++ b/FsCrypt.cpp
+@@ -17,6 +17,7 @@
+ #include "FsCrypt.h"
+ 
+ #include "KeyStorage.h"
++#include "PolicyDetect.h"
+ #include "KeyUtil.h"
+ #include "Utils.h"
+ #include "VoldUtil.h"
+@@ -258,6 +259,15 @@
+                       "this flag from the device's fstab";
+         return false;
+     }
++    // The fscrypt policy version stored in this fstab only describes what a freshly
++    // formatted data partition would use.  Data formatted by an older or newer ROM keeps
++    // the version it was created with, so trust the on-disk policy when it is readable.
++    int detected_version = DetectDataPolicyVersion();
++    if (detected_version != 0 && detected_version != options->version) {
++        LOG(INFO) << "Data is encrypted with fscrypt policy v" << detected_version
++                  << ", overriding fstab version v" << options->version;
++        options->version = detected_version;
++    }
+     if (options->version == 1 || !retry) {
+         options->use_hw_wrapped_key =
+             GetEntryForMountPoint(&fstab_default, DATA_MNT_POINT)->fs_mgr_flags.wrapped_key;
+--- a/KeyUtil.cpp
++++ b/KeyUtil.cpp
+@@ -31,6 +31,7 @@
+ #include <keyutils.h>
+ 
+ #include "KeyStorage.h"
++#include "PolicyDetect.h"
+ #include "Utils.h"
+ 
+ namespace android {
+@@ -259,8 +260,8 @@
+     return true;
+ }
+ 
+-bool installKey(const std::string& mountpoint, const EncryptionOptions& options,
+-                const KeyBuffer& key, EncryptionPolicy* policy) {
++static bool installKeyOnce(const std::string& mountpoint, const EncryptionOptions& options,
++                           const KeyBuffer& key, EncryptionPolicy* policy) {
+     policy->options = options;
+     // Put the fscrypt_add_key_arg in an automatically-zeroing buffer, since we
+     // have to copy the raw key into it.
+@@ -318,6 +319,39 @@
+     return true;
+ }
+ 
++// Installs the key for the fscrypt policy version actually used on this device, and then
++// installs the same key for the other policy version as well (best effort).  This lets one
++// recovery image decrypt both v1 and v2 userdata, e.g. data formatted by an Android 10/11/12
++// based ROM (v1) and data formatted by an Android 13+ based ROM (v2).
++bool installKey(const std::string& mountpoint, const EncryptionOptions& options,
++                const KeyBuffer& key, EncryptionPolicy* policy) {
++    EncryptionOptions opts = options;
++
++    int detected = DetectDataPolicyVersion();
++    if (detected != 0 && detected != opts.version) {
++        LOG(INFO) << "Overriding fscrypt policy version " << opts.version << " with detected v"
++                  << detected;
++        opts.version = detected;
++    }
++
++    if (installKeyOnce(mountpoint, opts, key, policy)) {
++        EncryptionOptions alternate = opts;
++        alternate.version = (opts.version == 1) ? 2 : 1;
++        EncryptionPolicy alternate_policy;
++        if (!installKeyOnce(mountpoint, alternate, key, &alternate_policy)) {
++            LOG(INFO) << "Key not installed for fscrypt policy v" << alternate.version
++                      << " (not needed)";
++        }
++        return true;
++    }
++
++    EncryptionOptions alternate = opts;
++    alternate.version = (opts.version == 1) ? 2 : 1;
++    LOG(INFO) << "Installing key with fscrypt policy v" << opts.version
++              << " failed, retrying with v" << alternate.version;
++    return installKeyOnce(mountpoint, alternate, key, policy);
++}
++
+ // Remove an encryption key of type "logon" from the global session keyring.
+ static bool evictKeyLegacy(const std::string& raw_ref) {
+     key_serial_t device_keyring;
+--- a/MetadataCrypt.cpp
++++ b/MetadataCrypt.cpp
+@@ -20,6 +20,7 @@
+ #include <string>
+ 
+ #include <fcntl.h>
++#include <unistd.h>
+ #include <sys/param.h>
+ #include <sys/stat.h>
+ #include <sys/types.h>
+@@ -243,6 +244,18 @@
+         return false;
+     }
+ 
++    // A data partition that was not created with metadata encryption has no key directory.
++    // Mount it directly and let the FBE layer deal with it, so that a single recovery can
++    // handle both metadata encrypted (keydirectory set) and plain FBE userdata.
++    if (data_rec->metadata_key_dir.empty() ||
++        access(data_rec->metadata_key_dir.c_str(), F_OK) != 0) {
++        LOG(INFO) << "No metadata encryption key directory for " << mount_point
++                  << ", mounting userdata without metadata decryption";
++        mount_via_fs_mgr(mount_point.c_str(), blk_device.c_str());
++        android::base::SetProperty("ro.crypto.fs_crypto_blkdev", blk_device);
++        return true;
++    }
++
+     unsigned int options_format_version = 1;
+     {
+         EncryptionOptions options;
