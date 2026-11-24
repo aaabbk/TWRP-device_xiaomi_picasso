@@ -134,9 +134,10 @@ jobs:
           echo "No patches found, skip."
           exit 0
         fi
+        root="$(pwd)"
         for p in "${patches[@]}"; do
           echo "Applying $p"
-          git -C system/vold apply "$p" || { echo "::error::failed to apply $p"; exit 1; }
+          git -C system/vold apply "$root/$p" || { echo "::error::failed to apply $p"; exit 1; }
         done
         git -C system/vold --no-pager diff --stat
       working-directory: ${{ steps.pwd.outputs.workspace-folder }}

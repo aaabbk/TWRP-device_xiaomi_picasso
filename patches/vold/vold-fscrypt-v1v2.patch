@@ -34,57 +34,58 @@
  #include "Utils.h"
  
  namespace android {
-@@ -259,8 +260,8 @@
-     return true;
- }
+@@ -261,19 +262,31 @@
  
--bool installKey(const std::string& mountpoint, const EncryptionOptions& options,
--                const KeyBuffer& key, EncryptionPolicy* policy) {
-+static bool installKeyOnce(const std::string& mountpoint, const EncryptionOptions& options,
-+                           const KeyBuffer& key, EncryptionPolicy* policy) {
-     policy->options = options;
-     // Put the fscrypt_add_key_arg in an automatically-zeroing buffer, since we
-     // have to copy the raw key into it.
-@@ -318,6 +319,39 @@
-     return true;
- }
- 
-+// Installs the key for the fscrypt policy version actually used on this device, and then
-+// installs the same key for the other policy version as well (best effort).  This lets one
-+// recovery image decrypt both v1 and v2 userdata, e.g. data formatted by an Android 10/11/12
-+// based ROM (v1) and data formatted by an Android 13+ based ROM (v2).
-+bool installKey(const std::string& mountpoint, const EncryptionOptions& options,
-+                const KeyBuffer& key, EncryptionPolicy* policy) {
+ bool installKey(const std::string& mountpoint, const EncryptionOptions& options,
+                 const KeyBuffer& key, EncryptionPolicy* policy) {
+-    policy->options = options;
 +    EncryptionOptions opts = options;
 +
++    // The fscrypt policy version in the fstab only describes what a freshly formatted data
++    // partition would use.  Data formatted by an older or newer ROM keeps the version it was
++    // created with, so trust the on-disk policy whenever it can be determined.
 +    int detected = DetectDataPolicyVersion();
 +    if (detected != 0 && detected != opts.version) {
-+        LOG(INFO) << "Overriding fscrypt policy version " << opts.version << " with detected v"
-+                  << detected;
++        LOG(INFO) << "Data is encrypted with fscrypt policy v" << detected
++                  << ", overriding fstab version v" << opts.version;
 +        opts.version = detected;
 +    }
 +
-+    if (installKeyOnce(mountpoint, opts, key, policy)) {
-+        EncryptionOptions alternate = opts;
-+        alternate.version = (opts.version == 1) ? 2 : 1;
-+        EncryptionPolicy alternate_policy;
-+        if (!installKeyOnce(mountpoint, alternate, key, &alternate_policy)) {
-+            LOG(INFO) << "Key not installed for fscrypt policy v" << alternate.version
-+                      << " (not needed)";
-+        }
-+        return true;
-+    }
-+
-+    EncryptionOptions alternate = opts;
-+    alternate.version = (opts.version == 1) ? 2 : 1;
-+    LOG(INFO) << "Installing key with fscrypt policy v" << opts.version
-+              << " failed, retrying with v" << alternate.version;
-+    return installKeyOnce(mountpoint, alternate, key, policy);
-+}
-+
- // Remove an encryption key of type "logon" from the global session keyring.
- static bool evictKeyLegacy(const std::string& raw_ref) {
-     key_serial_t device_keyring;
++    policy->options = opts;
+     // Put the fscrypt_add_key_arg in an automatically-zeroing buffer, since we
+     // have to copy the raw key into it.
+     KeyBuffer arg_buf(sizeof(struct fscrypt_add_key_arg) + key.size(), 0);
+     struct fscrypt_add_key_arg* arg = (struct fscrypt_add_key_arg*)arg_buf.data();
+ 
+     // Initialize the "key specifier", which is like a name for the key.
+-    switch (options.version) {
++    switch (opts.version) {
+         case 1:
+             // A key for a v1 policy is specified by an arbitrary 8-byte
+             // "descriptor", which must be provided by userspace.  We use the
+             // first 8 bytes from the double SHA-512 of the key itself.
+-            if (options.use_hw_wrapped_key) {
++            if (opts.use_hw_wrapped_key) {
+                 /* When wrapped key is supported, only the first 32 bytes are
+                    the same per boot. The second 32 bytes can change as the ephemeral
+                    key is different. */
+@@ -297,14 +310,14 @@
+             arg->key_spec.type = FSCRYPT_KEY_SPEC_TYPE_IDENTIFIER;
+             break;
+         default:
+-            LOG(ERROR) << "Invalid encryption policy version: " << options.version;
++            LOG(ERROR) << "Invalid encryption policy version: " << opts.version;
+             return false;
+     }
+ 
+     arg->raw_size = key.size();
+     memcpy(arg->raw, key.data(), key.size());
+ 
+-    if (!installFsKeyringKey(mountpoint, options, arg)) return false;
++    if (!installFsKeyringKey(mountpoint, opts, arg)) return false;
+ 
+     if (arg->key_spec.type == FSCRYPT_KEY_SPEC_TYPE_IDENTIFIER) {
+         // Retrieve the key identifier that the kernel computed.
 --- a/MetadataCrypt.cpp
 +++ b/MetadataCrypt.cpp
 @@ -20,6 +20,7 @@
