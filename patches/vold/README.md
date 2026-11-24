@@ -15,7 +15,8 @@ fscrypt 的 policy 版本在**格式化那一刻**固定，之后刷机、升级
      `0` = v1，`EINVAL` = v2（内核拒绝把 v2 填进 v1 结构体），`ENODATA` = 未加密
    - 探测顺序 `/data/system_de` → `/data/misc` → `/data/media` → `/data/system_ce`
 2. `KeyUtil.cpp`
-   - `installKey()` 按探测到的版本装 key（探测不到才用 fstab 给的版本），不重复安装
+   - `installKey()` 按探测到的版本装 key（探测不到才用 fstab 给的版本）
+   - 正常情况下只装一次；**只有安装失败时**才换另一种 policy 版本重试一次
    - v1 用 8 字节 descriptor、v2 由内核计算 identifier
 3. `FsCrypt.cpp`
    - `get_data_file_encryption_options()` 解析完 fstab 后，用探测到的版本覆盖 `options.version`
