@@ -45,7 +45,7 @@
      policy->options = options;
      // Put the fscrypt_add_key_arg in an automatically-zeroing buffer, since we
      // have to copy the raw key into it.
-@@ -318,6 +319,33 @@
+@@ -318,6 +319,43 @@
      return true;
  }
  
@@ -67,6 +67,16 @@
 +    }
 +
 +    if (installKeyOnce(mountpoint, opts, key, policy)) return true;
++
++    // The on-disk policy is authoritative, so a failure with a detected version must be
++    // reported instead of silently installing the key for the other policy version, which
++    // would only mask the real problem.  Only fall back to the other version when the
++    // version could not be probed and we were merely guessing from the fstab.
++    if (detected != 0) {
++        LOG(ERROR) << "Failed to install key for fscrypt policy v" << opts.version
++                   << " (detected on-disk), not retrying with another version";
++        return false;
++    }
 +
 +    EncryptionOptions alternate = opts;
 +    alternate.version = (opts.version == 1) ? 2 : 1;
