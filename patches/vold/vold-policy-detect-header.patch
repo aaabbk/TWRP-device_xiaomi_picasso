@@ -1,9 +1,9 @@
 diff --git a/PolicyDetect.h b/PolicyDetect.h
 new file mode 100644
-index 0000000..10fff17
+index 0000000..4dd79b8
 --- /dev/null
 +++ b/PolicyDetect.h
-@@ -0,0 +1,85 @@
+@@ -0,0 +1,83 @@
 +/*
 + * Copyright (C) 2025 The Android Open Source Project
 + *
@@ -31,7 +31,7 @@ index 0000000..10fff17
 +
 +#include <linux/fscrypt.h>
 +
-+#include <android-base/logging.h>
++#include <stdio.h>
 +
 +// Layout of the legacy (v1) fscrypt policy as returned by FS_IOC_GET_ENCRYPTION_POLICY.
 +// Defined locally so that this code builds against both old and new kernel headers.
@@ -80,10 +80,8 @@ index 0000000..10fff17
 +
 +    for (size_t i = 0; i < sizeof(kCandidates) / sizeof(kCandidates[0]); i++) {
 +        int version = DetectPolicyVersionAt(kCandidates[i]);
-+        if (version != 0) {
-+            LOG(INFO) << "Detected fscrypt policy v" << version << " on " << kCandidates[i];
-+            return version;
-+        }
++        printf("twrp_policy_detect: %s -> version %d\n", kCandidates[i], version);
++        if (version != 0) return version;
 +    }
 +    return 0;
 +}

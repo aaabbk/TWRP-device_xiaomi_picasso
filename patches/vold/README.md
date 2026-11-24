@@ -39,7 +39,22 @@ git apply /path/to/device/xiaomi/picasso/patches/vold/vold-fscrypt-v1v2.patch
 云编译无需手工操作。本地编译若跳过该步骤，补丁不会生效。
 
 ## 验证
-刷入后在 recovery 里查看 `/tmp/recovery.log`：
+补丁里的诊断日志**故意用 printf 而不是 LOG(INFO)**：recovery 里的 vold 走 logd，
+`LOG(INFO)` 只会进 `adb logcat`，不会出现在 `/tmp/recovery.log` 里；printf 才能直接落盘。
+
+刷入后在 recovery 里查看 `/tmp/recovery.log`，应能看到：
+
+```
+twrp_policy_detect: /data/system_de -> version 2
+twrp_policy_detect: /data/misc -> version 0
+twrp_install_key: mountpoint=/data fstab_version=1 wrapped=1
+twrp_install_key: detected policy v2, overriding fstab v1
+```
+
+若只看到 `twrp_policy_detect` 全为 0，说明探测拿不到策略（DE 还没挂载或内核不支持该 ioctl）；
+若完全没有 `twrp_install_key`，说明 key 安装流程根本没走到。
+
+以下是正常解密成功的日志：
 
 ```
 Detected fscrypt policy v2 on /data/system_de

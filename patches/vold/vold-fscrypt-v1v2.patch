@@ -17,8 +17,8 @@
 +    // the version it was created with, so trust the on-disk policy when it is readable.
 +    int detected_version = DetectDataPolicyVersion();
 +    if (detected_version != 0 && detected_version != options->version) {
-+        LOG(INFO) << "Data is encrypted with fscrypt policy v" << detected_version
-+                  << ", overriding fstab version v" << options->version;
++        printf("twrp_fscrypt: detected policy v%d, overriding fstab v%d\n", detected_version,
++               options->version);
 +        options->version = detected_version;
 +    }
      if (options->version == 1 || !retry) {
@@ -45,7 +45,7 @@
      policy->options = options;
      // Put the fscrypt_add_key_arg in an automatically-zeroing buffer, since we
      // have to copy the raw key into it.
-@@ -318,6 +319,43 @@
+@@ -318,6 +319,45 @@
      return true;
  }
  
@@ -56,13 +56,16 @@
 +                const KeyBuffer& key, EncryptionPolicy* policy) {
 +    EncryptionOptions opts = options;
 +
++    printf("twrp_install_key: mountpoint=%s fstab_version=%d wrapped=%d\n", mountpoint.c_str(),
++           opts.version, (int)opts.use_hw_wrapped_key);
++
 +    // The fscrypt policy version in the fstab only describes what a freshly formatted data
 +    // partition would use.  Data formatted by an older or newer ROM keeps the version it was
 +    // created with, so trust the on-disk policy whenever it can be determined.
 +    int detected = DetectDataPolicyVersion();
 +    if (detected != 0 && detected != opts.version) {
-+        LOG(INFO) << "Data is encrypted with fscrypt policy v" << detected
-+                  << ", overriding fstab version v" << opts.version;
++        printf("twrp_install_key: detected policy v%d, overriding fstab v%d\n", detected,
++               opts.version);
 +        opts.version = detected;
 +    }
 +
@@ -73,16 +76,15 @@
 +    // would only mask the real problem.  Only fall back to the other version when the
 +    // version could not be probed and we were merely guessing from the fstab.
 +    if (detected != 0) {
-+        LOG(ERROR) << "Failed to install key for fscrypt policy v" << opts.version
-+                   << " (detected on-disk), not retrying with another version";
++        printf("twrp_install_key: install v%d failed, detection was explicit, not retrying\n",
++               opts.version);
 +        return false;
 +    }
 +
 +    EncryptionOptions alternate = opts;
 +    alternate.version = (opts.version == 1) ? 2 : 1;
-+    LOG(INFO) << "Installing key with fscrypt policy v" << opts.version
-+              << " failed, retrying with v"
-+              << alternate.version;
++    printf("twrp_install_key: install v%d failed, retrying v%d\n", opts.version,
++           alternate.version);
 +    return installKeyOnce(mountpoint, alternate, key, policy);
 +}
 +
@@ -99,7 +101,7 @@
  #include <sys/param.h>
  #include <sys/stat.h>
  #include <sys/types.h>
-@@ -243,6 +244,18 @@
+@@ -243,6 +244,17 @@
          return false;
      }
  
@@ -108,8 +110,7 @@
 +    // handle both metadata encrypted (keydirectory set) and plain FBE userdata.
 +    if (data_rec->metadata_key_dir.empty() ||
 +        access(data_rec->metadata_key_dir.c_str(), F_OK) != 0) {
-+        LOG(INFO) << "No metadata encryption key directory for " << mount_point
-+                  << ", mounting userdata without metadata decryption";
++        printf("twrp_metadata: no key directory, mounting %s directly\n", mount_point.c_str());
 +        mount_via_fs_mgr(mount_point.c_str(), blk_device.c_str());
 +        android::base::SetProperty("ro.crypto.fs_crypto_blkdev", blk_device);
 +        return true;
