@@ -121,7 +121,7 @@
          EncryptionOptions options;
 --- a/Decrypt.cpp
 +++ b/Decrypt.cpp
-@@ -320,6 +320,57 @@
+@@ -320,6 +320,58 @@
  	return true;
  }
  
@@ -168,9 +168,10 @@
 +            return item.first;
 +        }
 +    }
-+    for (auto& item : has_spblob) {
-+        printf("twrp_spblob: using protector id %s (only .spblob)\n", item.first.c_str());
-+        return item.first;
++    if (!has_spblob.empty()) {
++        const std::string& only_spblob_id = has_spblob.begin()->first;
++        printf("twrp_spblob: using protector id %s (only .spblob)\n", only_spblob_id.c_str());
++        return only_spblob_id;
 +    }
 +    printf("twrp_spblob: no usable state file found, falling back to legacy handle\n");
 +    return legacy_handle;
@@ -179,7 +180,7 @@
  /* C++ replacement for
   * https://android.googlesource.com/platform/frameworks/base/+/android-8.0.0_r23/services/core/java/com/android/server/locksettings/SyntheticPasswordManager.java#765
   * called here
-@@ -658,7 +709,7 @@
+@@ -658,7 +710,7 @@
  	long handle = 0;
  	// Get the handle: https://android.googlesource.com/platform/frameworks/base/+/android-8.0.0_r23/services/core/java/com/android/server/locksettings/LockSettingsService.java#2017
  	KeystoreInfo keystore_info;
@@ -188,7 +189,7 @@
  	// Now we begin driving unwrapPasswordBasedSyntheticPassword from: https://android.googlesource.com/platform/frameworks/base/+/android-8.0.0_r23/services/core/java/com/android/server/locksettings/SyntheticPasswordManager.java#758
  	// First we read the password data which contains scrypt parameters
  	// printf("pwd N %i R %i P %i salt ", pwd.scryptN, pwd.scryptR, pwd.scryptP); output_hex((char*)pwd.salt, pwd.salt_len); printf("\n");
-@@ -834,7 +885,7 @@
+@@ -834,7 +886,7 @@
  	if (stat(spblob_path_char, &st) == 0) {
  		std::string spblob_path = spblob_path_char;
  		KeystoreInfo keystore_info;
