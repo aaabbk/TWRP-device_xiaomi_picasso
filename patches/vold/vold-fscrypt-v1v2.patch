@@ -121,7 +121,15 @@
          EncryptionOptions options;
 --- a/Decrypt.cpp
 +++ b/Decrypt.cpp
-@@ -320,6 +320,58 @@
+@@ -26,6 +26,7 @@
+ #include <stdlib.h>
+ #include <sys/stat.h>
+ #include <sys/types.h>
++#include <unistd.h>
+ 
+ #include <keyutils.h>
+ #include "Weaver1.h"
+@@ -320,6 +321,83 @@
  	return true;
  }
  
@@ -129,14 +137,33 @@
 +// ("<protector id>.spblob/.pwd/.secdis") instead of the single legacy keystore "sp-handle".
 +// Older ROMs keep using the legacy handle.  Resolve which id this user's state files use:
 +// prefer the legacy handle when its files exist, otherwise scan the spblob directory.
++// Cached result of the last successful resolution: TWRP unmounts and remounts /data while
++// decrypting, so a later lookup can transiently fail even though we already know the id.
++static std::string s_cached_spblob_id;
++
++// Make sure the DE keys are installed and /data/system_de is readable again.  TWRP calls into
++// decryption more than once and may have unmounted /data in between.
++static void Ensure_Data_Accessible() {
++    if (access("/data/system_de", F_OK) == 0) return;
++    printf("twrp_spblob: /data/system_de not accessible, re-initializing DE keys\n");
++    if (!Decrypt_DE()) {
++        printf("twrp_spblob: DE re-initialization failed\n");
++        return;
++    }
++    printf("twrp_spblob: DE access %s after retry\n",
++           access("/data/system_de", F_OK) == 0 ? "recovered" : "still broken");
++}
++
 +static std::string Resolve_Spblob_Id(const std::string& spblob_path,
 +                                     const std::string& legacy_handle) {
-+    printf("twrp_spblob: spblob_path=%s legacy_handle='%s'\n", spblob_path.c_str(),
-+           legacy_handle.c_str());
++    printf("twrp_spblob: spblob_path=%s legacy_handle='%s' cached='%s'\n", spblob_path.c_str(),
++           legacy_handle.c_str(), s_cached_spblob_id.c_str());
++    Ensure_Data_Accessible();
 +
 +    if (!legacy_handle.empty() &&
 +        android::vold::pathExists(spblob_path + legacy_handle + ".spblob")) {
 +        printf("twrp_spblob: using legacy handle %s\n", legacy_handle.c_str());
++        s_cached_spblob_id = legacy_handle;
 +        return legacy_handle;
 +    }
 +
@@ -165,13 +192,19 @@
 +        if (has_spblob.count(item.first)) {
 +            printf("twrp_spblob: using protector id %s (has .pwd and .spblob)\n",
 +                   item.first.c_str());
++            s_cached_spblob_id = item.first;
 +            return item.first;
 +        }
 +    }
 +    if (!has_spblob.empty()) {
 +        const std::string& only_spblob_id = has_spblob.begin()->first;
 +        printf("twrp_spblob: using protector id %s (only .spblob)\n", only_spblob_id.c_str());
++        s_cached_spblob_id = only_spblob_id;
 +        return only_spblob_id;
++    }
++    if (!s_cached_spblob_id.empty()) {
++        printf("twrp_spblob: falling back to cached id %s\n", s_cached_spblob_id.c_str());
++        return s_cached_spblob_id;
 +    }
 +    printf("twrp_spblob: no usable state file found, falling back to legacy handle\n");
 +    return legacy_handle;
@@ -180,7 +213,7 @@
  /* C++ replacement for
   * https://android.googlesource.com/platform/frameworks/base/+/android-8.0.0_r23/services/core/java/com/android/server/locksettings/SyntheticPasswordManager.java#765
   * called here
-@@ -658,7 +710,7 @@
+@@ -658,7 +736,7 @@
  	long handle = 0;
  	// Get the handle: https://android.googlesource.com/platform/frameworks/base/+/android-8.0.0_r23/services/core/java/com/android/server/locksettings/LockSettingsService.java#2017
  	KeystoreInfo keystore_info;
@@ -189,7 +222,7 @@
  	// Now we begin driving unwrapPasswordBasedSyntheticPassword from: https://android.googlesource.com/platform/frameworks/base/+/android-8.0.0_r23/services/core/java/com/android/server/locksettings/SyntheticPasswordManager.java#758
  	// First we read the password data which contains scrypt parameters
  	// printf("pwd N %i R %i P %i salt ", pwd.scryptN, pwd.scryptR, pwd.scryptP); output_hex((char*)pwd.salt, pwd.salt_len); printf("\n");
-@@ -834,7 +886,7 @@
+@@ -834,7 +912,7 @@
  	if (stat(spblob_path_char, &st) == 0) {
  		std::string spblob_path = spblob_path_char;
  		KeystoreInfo keystore_info;

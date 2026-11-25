@@ -29,6 +29,10 @@ fscrypt 的 policy 版本在**格式化那一刻**固定，之后刷机、升级
      `.pwd` 和 `.spblob` 的（LSKF 保护器）
    - `Get_Password_Type()` 与 `Decrypt_User_Synth_Pass()` 都改用解析出的 id，
      keystore 别名同源，避免 v1 ROM 与 A14+ ROM 的命名差异
+   - 结果缓存到 `s_cached_spblob_id`：TWRP 中途会卸载/重挂 /data，第二次解析可能
+     `locksettings.db` 读不到、目录 ENOENT，此时复用缓存而不是退化成空 handle
+   - `Ensure_Data_Accessible()`：访问 spblob 前若 `/data/system_de` 不可见，就重新
+     调一次 `Decrypt_DE()` 装回 DE key 再试
 5. `MetadataCrypt.cpp`
    - `keydirectory` 不存在时（没有 metadata 加密的数据）直接挂载 /data 并返回成功，
      让 FBE 层继续走普通解密流程，避免官方包被 metadata 分支卡住
