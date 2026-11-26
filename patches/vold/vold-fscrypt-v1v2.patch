@@ -129,7 +129,7 @@
  
  #include <keyutils.h>
  #include "Weaver1.h"
-@@ -320,6 +321,83 @@
+@@ -320,6 +321,104 @@
  	return true;
  }
  
@@ -143,15 +143,32 @@
 +
 +// Make sure the DE keys are installed and /data/system_de is readable again.  TWRP calls into
 +// decryption more than once and may have unmounted /data in between.
++static bool Is_Data_Mounted() {
++    FILE* f = fopen("/proc/mounts", "r");
++    if (f == NULL) return false;
++    char line[512];
++    bool mounted = false;
++    while (fgets(line, sizeof(line), f) != NULL) {
++        if (strstr(line, " /data ") != NULL) {
++            mounted = true;
++            break;
++        }
++    }
++    fclose(f);
++    return mounted;
++}
++
 +static void Ensure_Data_Accessible() {
-+    if (access("/data/system_de", F_OK) == 0) return;
-+    printf("twrp_spblob: /data/system_de not accessible, re-initializing DE keys\n");
++    if (access("/data/system_de/0", F_OK) == 0) return;
++    printf("twrp_spblob: /data/system_de/0 not accessible (data mounted=%d), re-initializing\n",
++           (int)Is_Data_Mounted());
 +    if (!Decrypt_DE()) {
 +        printf("twrp_spblob: DE re-initialization failed\n");
 +        return;
 +    }
-+    printf("twrp_spblob: DE access %s after retry\n",
-+           access("/data/system_de", F_OK) == 0 ? "recovered" : "still broken");
++    printf("twrp_spblob: DE access %s after retry (data mounted=%d)\n",
++           access("/data/system_de/0", F_OK) == 0 ? "recovered" : "still broken",
++           (int)Is_Data_Mounted());
 +}
 +
 +static std::string Resolve_Spblob_Id(const std::string& spblob_path,
@@ -172,6 +189,10 @@
 +    DIR* dir = opendir(spblob_path.c_str());
 +    if (dir == NULL) {
 +        printf("twrp_spblob: cannot open %s: %s\n", spblob_path.c_str(), strerror(errno));
++        if (!s_cached_spblob_id.empty()) {
++            printf("twrp_spblob: using cached id %s instead\n", s_cached_spblob_id.c_str());
++            return s_cached_spblob_id;
++        }
 +        return legacy_handle;
 +    }
 +    struct dirent* entry;
@@ -213,7 +234,7 @@
  /* C++ replacement for
   * https://android.googlesource.com/platform/frameworks/base/+/android-8.0.0_r23/services/core/java/com/android/server/locksettings/SyntheticPasswordManager.java#765
   * called here
-@@ -658,7 +736,7 @@
+@@ -658,7 +757,7 @@
  	long handle = 0;
  	// Get the handle: https://android.googlesource.com/platform/frameworks/base/+/android-8.0.0_r23/services/core/java/com/android/server/locksettings/LockSettingsService.java#2017
  	KeystoreInfo keystore_info;
@@ -222,7 +243,7 @@
  	// Now we begin driving unwrapPasswordBasedSyntheticPassword from: https://android.googlesource.com/platform/frameworks/base/+/android-8.0.0_r23/services/core/java/com/android/server/locksettings/SyntheticPasswordManager.java#758
  	// First we read the password data which contains scrypt parameters
  	// printf("pwd N %i R %i P %i salt ", pwd.scryptN, pwd.scryptR, pwd.scryptP); output_hex((char*)pwd.salt, pwd.salt_len); printf("\n");
-@@ -834,7 +912,7 @@
+@@ -834,7 +933,7 @@
  	if (stat(spblob_path_char, &st) == 0) {
  		std::string spblob_path = spblob_path_char;
  		KeystoreInfo keystore_info;
